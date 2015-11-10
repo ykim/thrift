@@ -20,6 +20,7 @@
 namespace c_glib TTest
 namespace cpp thrift.test.debug
 namespace java thrift.test
+namespace rb thrift.test
 
 struct Doubles {
  1: double nan,
@@ -364,4 +365,8 @@ struct TupleProtocolTestStruct {
   optional i32 field10;
   optional i32 field11;
   optional i32 field12;
+}
+
+struct ListDoublePerf {
+  1: list<double> field;
 }

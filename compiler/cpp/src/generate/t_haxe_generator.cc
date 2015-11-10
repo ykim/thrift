@@ -610,7 +610,7 @@ string t_haxe_generator::render_const_value(ofstream& out,
     case t_base_type::TYPE_BOOL:
       render << ((value->get_integer() > 0) ? "true" : "false");
       break;
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       render << "(byte)" << value->get_integer();
       break;
     case t_base_type::TYPE_I16:
@@ -818,6 +818,10 @@ void t_haxe_generator::generate_haxe_struct_reader(ofstream& out, t_struct* tstr
   const vector<t_field*>& fields = tstruct->get_members();
   vector<t_field*>::const_iterator f_iter;
 
+  indent(out) << "iprot.IncrementRecursionDepth();" << endl;
+  indent(out) << "try" << endl;
+  scope_up(out);
+
   // Declare stack tmp variables and read struct header
   out << indent() << "var field : TField;" << endl << indent() << "iprot.readStructBegin();"
       << endl;
@@ -868,6 +872,14 @@ void t_haxe_generator::generate_haxe_struct_reader(ofstream& out, t_struct* tstr
   scope_down(out);
 
   out << indent() << "iprot.readStructEnd();" << endl << endl;
+
+  indent(out) << "iprot.DecrementRecursionDepth();" << endl;
+  scope_down(out);
+  indent(out) << "catch(e:Dynamic)" << endl;
+  scope_up(out);
+  indent(out) << "iprot.DecrementRecursionDepth();" << endl;
+  indent(out) << "throw e;" << endl;
+  scope_down(out);
 
   // check for required fields of primitive type
   // (which can be checked here but not in the general validate method)
@@ -952,7 +964,10 @@ void t_haxe_generator::generate_haxe_struct_writer(ofstream& out, t_struct* tstr
   vector<t_field*>::const_iterator f_iter;
 
   // performs various checks (e.g. check that all required fields are set)
-  indent(out) << "validate();" << endl << endl;
+  indent(out) << "validate();" << endl;
+  indent(out) << "oprot.IncrementRecursionDepth();" << endl;
+  indent(out) << "try" << endl;
+  scope_up(out);
 
   indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
 
@@ -977,10 +992,18 @@ void t_haxe_generator::generate_haxe_struct_writer(ofstream& out, t_struct* tstr
       indent(out) << "}" << endl;
     }
   }
-  // Write the struct map
-  out << indent() << "oprot.writeFieldStop();" << endl << indent() << "oprot.writeStructEnd();"
-      << endl;
-
+  
+  indent(out) << "oprot.writeFieldStop();" << endl;
+  indent(out) << "oprot.writeStructEnd();" << endl;
+  
+  indent(out) << "oprot.DecrementRecursionDepth();" << endl;
+  scope_down(out);
+  indent(out) << "catch(e:Dynamic)" << endl;
+  scope_up(out);
+  indent(out) << "oprot.DecrementRecursionDepth();" << endl;
+  indent(out) << "throw e;" << endl;
+  scope_down(out);
+  
   indent_down();
   out << indent() << "}" << endl << endl;
 }
@@ -1001,6 +1024,10 @@ void t_haxe_generator::generate_haxe_struct_result_writer(ofstream& out, t_struc
   const vector<t_field*>& fields = tstruct->get_sorted_members();
   vector<t_field*>::const_iterator f_iter;
 
+  indent(out) << "oprot.IncrementRecursionDepth();" << endl;
+  indent(out) << "try" << endl;
+  scope_up(out);
+  
   indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
 
   bool first = true;
@@ -1028,10 +1055,19 @@ void t_haxe_generator::generate_haxe_struct_result_writer(ofstream& out, t_struc
     indent_down();
     indent(out) << "}";
   }
-  // Write the struct map
-  out << endl << indent() << "oprot.writeFieldStop();" << endl << indent()
-      << "oprot.writeStructEnd();" << endl;
-
+  
+  indent(out) << endl;
+  indent(out) << "oprot.writeFieldStop();" << endl;
+  indent(out) << "oprot.writeStructEnd();" << endl;
+  
+  indent(out) << "oprot.DecrementRecursionDepth();" << endl;
+  scope_down(out);
+  indent(out) << "catch(e:Dynamic)" << endl;
+  scope_up(out);
+  indent(out) << "oprot.DecrementRecursionDepth();" << endl;
+  indent(out) << "throw e;" << endl;
+  scope_down(out);
+  
   indent_down();
   out << indent() << "}" << endl << endl;
 }
@@ -1356,7 +1392,7 @@ std::string t_haxe_generator::get_haxe_type_string(t_type* type) {
     case t_base_type::TYPE_BOOL:
       return "TType.BOOL";
       break;
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return "TType.BYTE";
       break;
     case t_base_type::TYPE_I16:
@@ -2158,7 +2194,7 @@ void t_haxe_generator::generate_deserialize_field(ofstream& out, t_field* tfield
       case t_base_type::TYPE_BOOL:
         out << "readBool();";
         break;
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
         out << "readByte();";
         break;
       case t_base_type::TYPE_I16:
@@ -2342,7 +2378,7 @@ void t_haxe_generator::generate_serialize_field(ofstream& out, t_field* tfield, 
       case t_base_type::TYPE_BOOL:
         out << "writeBool(" << name << ");";
         break;
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
         out << "writeByte(" << name << ");";
         break;
       case t_base_type::TYPE_I16:
@@ -2505,7 +2541,7 @@ string t_haxe_generator::type_name(t_type* ttype, bool in_container, bool in_ini
         if (!(((t_base_type*)tkey)->is_binary())) {
           return "StringMap< " + type_name(tval) + ">";
         }
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
       case t_base_type::TYPE_I16:
       case t_base_type::TYPE_I32:
         return "IntMap< " + type_name(tval) + ">";
@@ -2530,7 +2566,7 @@ string t_haxe_generator::type_name(t_type* ttype, bool in_container, bool in_ini
         if (!(((t_base_type*)tkey)->is_binary())) {
           return "StringSet";
         }
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
       case t_base_type::TYPE_I16:
       case t_base_type::TYPE_I32:
         return "IntSet";
@@ -2584,7 +2620,7 @@ string t_haxe_generator::base_type_name(t_base_type* type, bool in_container) {
     }
   case t_base_type::TYPE_BOOL:
     return "Bool";
-  case t_base_type::TYPE_BYTE:
+  case t_base_type::TYPE_I8:
   case t_base_type::TYPE_I16:
   case t_base_type::TYPE_I32:
     return "haxe.Int32";
@@ -2621,7 +2657,7 @@ string t_haxe_generator::declare_field(t_field* tfield, bool init) {
       case t_base_type::TYPE_BOOL:
         result += " = false";
         break;
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
       case t_base_type::TYPE_I16:
       case t_base_type::TYPE_I32:
       case t_base_type::TYPE_I64:
@@ -2720,7 +2756,7 @@ string t_haxe_generator::type_to_enum(t_type* type) {
       return "TType.STRING";
     case t_base_type::TYPE_BOOL:
       return "TType.BOOL";
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return "TType.BYTE";
     case t_base_type::TYPE_I16:
       return "TType.I16";

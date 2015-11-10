@@ -24,7 +24,7 @@ AC_INIT([thrift], [1.0.0-dev])
 
 AC_CONFIG_AUX_DIR([.])
 
-AM_INIT_AUTOMAKE([1.13 tar-ustar])
+AM_INIT_AUTOMAKE([1.13 subdir-objects tar-ustar])
 PKG_PROG_PKG_CONFIG
 
 AC_ARG_VAR([PY_PREFIX], [Prefix for installing Python modules.
@@ -122,6 +122,7 @@ if test "$enable_libs" = "no"; then
   with_perl="no"
   with_php="no"
   with_php_extension="no"
+  with_dart="no"
   with_erlang="no"
   with_go="no"
   with_d="no"
@@ -137,6 +138,7 @@ if test "$with_cpp" = "yes";  then
   if test "x$succeeded" = "xyes" ; then
     AC_SUBST([BOOST_LIB_DIR], [$(echo "$BOOST_LDFLAGS" | sed -e 's/^\-L//')])
     AC_SUBST([BOOST_CHRONO_LDADD], [$(echo "$BOOST_LIB_DIR/libboost_chrono.a")])
+    AC_SUBST([BOOST_FILESYSTEM_LDADD], [$(echo "$BOOST_LIB_DIR/libboost_filesystem.a")])
     AC_SUBST([BOOST_SYSTEM_LDADD], [$(echo "$BOOST_LIB_DIR/libboost_system.a")])
     AC_SUBST([BOOST_TEST_LDADD], [$(echo "$BOOST_LIB_DIR/libboost_unit_test_framework.a")])
     AC_SUBST([BOOST_THREAD_LDADD], [$(echo "$BOOST_LIB_DIR/libboost_thread.a")])
@@ -197,6 +199,13 @@ AM_CONDITIONAL(WITH_C_GLIB, [test "$have_glib2" = "yes" -a "$have_gobject2" = "y
 
 AX_THRIFT_LIB(csharp, [C#], yes)
 if test "$with_csharp" = "yes";  then
+  PKG_CHECK_MODULES(MONO, mono >= 2.11.0, mono_2_11=yes, mono_2_11=no)
+  if test "$mono_2_11" == "yes"; then
+    AC_PATH_PROG([MCS], [mcs])
+    if test "x$MCS" != "x"; then
+      mono_mcs="yes"
+    fi
+  fi
   PKG_CHECK_MODULES(MONO, mono >= 2.0.0, net_3_5=yes, net_3_5=no)
   PKG_CHECK_MODULES(MONO, mono >= 1.2.4, have_mono=yes, have_mono=no)
   if test "$have_mono" = "yes" ; then
@@ -205,6 +214,7 @@ if test "$with_csharp" = "yes";  then
 fi
 AM_CONDITIONAL(WITH_MONO, [test "$have_csharp" = "yes"])
 AM_CONDITIONAL(NET_2_0, [test "$net_3_5" = "no"])
+AM_CONDITIONAL(MONO_MCS, [test "$mono_mcs" = "yes"])
 
 AX_THRIFT_LIB(java, [Java], yes)
 if test "$with_java" = "yes";  then
@@ -231,9 +241,16 @@ if test "$with_erlang" = "yes";  then
   fi
   if test -n "$ERL" -a -n "$ERLC" ; then
     have_erlang="yes"
+
+    # otp_release is simply a number (like "17") for OTP17+ while "R16..." for OTP16 or less.
+    # OTP version is currently only used for running tests.
+    if $ERL -eval 'erlang:display(erlang:system_info(otp_release)),halt().' -noshell | grep "^\"R" >/dev/null; then
+      erlang_otp16_or_less="yes"
+    fi
   fi
 fi
 AM_CONDITIONAL(WITH_ERLANG, [test "$have_erlang" = "yes"])
+AM_CONDITIONAL(ERLANG_OTP16, [test "$erlang_otp16_or_less" = "yes"])
 
 AX_THRIFT_LIB(nodejs, [Nodejs], yes)
 have_nodejs=no
@@ -267,6 +284,16 @@ if test "$with_python" = "yes";  then
   fi
 fi
 AM_CONDITIONAL(WITH_PYTHON, [test "$have_python" = "yes"])
+
+# Find "python3" executable.
+# It's distro specific and far from ideal but needed to cross test py2-3 at once.
+if test "x$have_python" = "xyes"; then
+  AC_PATH_PROG([PYTHON3], [python3])
+  if test "x$PYTHON3" != "x" && test "x$PYTHON3" != "x:" ; then
+    have_py3="yes"
+  fi
+fi
+AM_CONDITIONAL(WITH_PY3, [test "$have_py3" = "yes"])
 
 AX_THRIFT_LIB(perl, [Perl], yes)
 if test "$with_perl" = "yes"; then
@@ -308,6 +335,16 @@ AM_CONDITIONAL(WITH_PHP_EXTENSION, [test "$have_php_extension" = "yes"])
 
 AC_PATH_PROG([PHPUNIT], [phpunit])
 AM_CONDITIONAL(HAVE_PHPUNIT, [test "x$PHPUNIT" != "x"])
+
+AX_THRIFT_LIB(dart, [DART], yes)
+if test "$with_dart" = "yes"; then
+  AC_PATH_PROG([DART], [dart])
+  AC_PATH_PROG([DARTPUB], [pub])
+  if test "x$DART" != "x" -a "x$DARTPUB" != "x"; then
+    have_dart="yes"
+  fi
+fi
+AM_CONDITIONAL(WITH_DART, [test "$have_dart" = "yes"])
 
 AX_THRIFT_LIB(ruby, [Ruby], yes)
 have_ruby=no
@@ -711,6 +748,7 @@ AC_CONFIG_FILES([
   lib/perl/test/Makefile
   lib/php/Makefile
   lib/php/test/Makefile
+  lib/dart/Makefile
   lib/py/Makefile
   lib/rb/Makefile
   lib/lua/Makefile
@@ -722,6 +760,7 @@ AC_CONFIG_FILES([
   test/haxe/Makefile
   test/hs/Makefile
   test/php/Makefile
+  test/dart/Makefile
   test/perl/Makefile
   test/py/Makefile
   test/py.twisted/Makefile
@@ -736,6 +775,7 @@ AC_CONFIG_FILES([
   tutorial/java/Makefile
   tutorial/js/Makefile
   tutorial/nodejs/Makefile
+  tutorial/dart/Makefile
   tutorial/py/Makefile
   tutorial/py.twisted/Makefile
   tutorial/py.tornado/Makefile
@@ -750,20 +790,26 @@ if test "$have_java" = "yes" ; then MAYBE_JAVA="java" ; else MAYBE_JAVA="" ; fi
 AC_SUBST([MAYBE_JAVA])
 if test "$have_csharp" = "yes" ; then MAYBE_CSHARP="csharp" ; else MAYBE_CSHARP="" ; fi
 AC_SUBST([MAYBE_CSHARP])
-if test "$have_python" = "yes" ; then MAYBE_PYTHON="python" ; else MAYBE_PYTHON="" ; fi
+if test "$have_python" = "yes" ; then MAYBE_PYTHON="py" ; else MAYBE_PYTHON="" ; fi
 AC_SUBST([MAYBE_PYTHON])
+if test "$have_py3" = "yes" ; then MAYBE_PY3="py3" ; else MAYBE_PY3="" ; fi
+AC_SUBST([MAYBE_PY3])
 if test "$have_ruby" = "yes" ; then MAYBE_RUBY="rb" ; else MAYBE_RUBY="" ; fi
 AC_SUBST([MAYBE_RUBY])
-if test "$have_haskell" = "yes" ; then MAYBE_HASKELL="haskell" ; else MAYBE_HASKELL="" ; fi
+if test "$have_haskell" = "yes" ; then MAYBE_HASKELL="hs" ; else MAYBE_HASKELL="" ; fi
 AC_SUBST([MAYBE_HASKELL])
 if test "$have_perl" = "yes" ; then MAYBE_PERL="perl" ; else MAYBE_PERL="" ; fi
 AC_SUBST([MAYBE_PERL])
 if test "$have_php" = "yes" ; then MAYBE_PHP="php" ; else MAYBE_PHP="" ; fi
 AC_SUBST([MAYBE_PHP])
+if test "$have_dart" = "yes" ; then MAYBE_DART="dart" ; else MAYBE_DART="" ; fi
+AC_SUBST([MAYBE_DART])
 if test "$have_go" = "yes" ; then MAYBE_GO="go" ; else MAYBE_GO="" ; fi
 AC_SUBST([MAYBE_GO])
 if test "$have_nodejs" = "yes" ; then MAYBE_NODEJS="nodejs" ; else MAYBE_NODEJS="" ; fi
 AC_SUBST([MAYBE_NODEJS])
+if test "$have_erlang" = "yes" ; then MAYBE_ERLANG="erl" ; else MAYBE_ERLANG="" ; fi
+AC_SUBST([MAYBE_ERLANG])
 
 AC_OUTPUT
 
@@ -781,6 +827,7 @@ echo "Building Haxe Library ........ : $have_haxe"
 echo "Building Haskell Library ..... : $have_haskell"
 echo "Building Perl Library ........ : $have_perl"
 echo "Building PHP Library ......... : $have_php"
+echo "Building Dart Library ........ : $have_dart"
 echo "Building Erlang Library ...... : $have_erlang"
 echo "Building Go Library .......... : $have_go"
 echo "Building D Library ........... : $have_d"
@@ -817,6 +864,12 @@ if test "$have_php" = "yes" ; then
   echo
   echo "PHP Library:"
   echo "   Using php-config .......... : $PHP_CONFIG"
+fi
+if test "$have_dart" = "yes" ; then
+  echo
+  echo "Dart Library:"
+  echo "   Using Dart ................ : $DART"
+  echo "   Using Pub ................. : $DARTPUB"
 fi
 if test "$have_ruby" = "yes" ; then
   echo

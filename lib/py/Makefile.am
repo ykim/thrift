@@ -19,7 +19,16 @@
 AUTOMAKE_OPTIONS = serial-tests
 DESTDIR ?= /
 
-all-local:
+if WITH_PY3
+py3-build:
+	$(PYTHON3) setup.py build
+else
+py3-build:
+endif
+
+testing:
+
+all-local: py3-build testing
 	$(PYTHON) setup.py build
 
 # We're ignoring prefix here because site-packages seems to be
@@ -35,6 +44,8 @@ clean-local:
 check-local: all
 
 EXTRA_DIST = \
+	CMakeLists.txt \
+	coding_standards.md \
 	compat \
 	setup.py \
 	setup.cfg \

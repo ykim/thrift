@@ -39,6 +39,15 @@ namespace Test
                 return -1;
             }
 
+            try
+            {
+                Console.SetBufferSize(Console.BufferWidth, 4096);
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("Failed to grow scroll-back buffer");
+            }
+
             string[] subArgs = new string[args.Length - 1];
             for(int i = 1; i < args.Length; i++)
             {
@@ -46,7 +55,7 @@ namespace Test
             }
             if (args[0] == "client")
             {
-                return TestClient.Execute(subArgs) ? 0 : 1;
+                return TestClient.Execute(subArgs);
             }
             else if (args[0] == "server")
             {

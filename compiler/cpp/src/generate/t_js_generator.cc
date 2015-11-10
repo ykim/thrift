@@ -439,7 +439,7 @@ void t_js_generator::generate_enum(t_enum* tenum) {
   for (c_iter = constants.begin(); c_iter != constants.end(); ++c_iter) {
     int value = (*c_iter)->get_value();
     if (gen_ts_) {
-      f_types_ts_ << ts_indent() << "'" << (*c_iter)->get_name() << "' = " << value << "," << endl;
+      f_types_ts_ << ts_indent() << (*c_iter)->get_name() << " = " << value << "," << endl;
       // add 'value: key' in addition to 'key: value' for TypeScript enums
       f_types_ << indent() << "'" << value << "' : '" << (*c_iter)->get_name() << "'," << endl;
     }
@@ -495,7 +495,7 @@ string t_js_generator::render_const_value(t_type* type, t_const_value* value) {
     case t_base_type::TYPE_BOOL:
       out << (value->get_integer() > 0 ? "true" : "false");
       break;
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -705,7 +705,7 @@ void t_js_generator::generate_js_struct_definition(ofstream& out,
 
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
       t_type* t = get_true_type((*m_iter)->get_type());
-      out << indent() << indent() << "if (args." << (*m_iter)->get_name() << " !== undefined) {"
+      out << indent() << indent() << "if (args." << (*m_iter)->get_name() << " !== undefined && args." << (*m_iter)->get_name() << " !== null) {"
           << endl << indent() << indent() << indent() << "this." << (*m_iter)->get_name();
 
       if (t->is_struct()) {
@@ -1596,7 +1596,7 @@ void t_js_generator::generate_deserialize_field(ofstream& out,
       case t_base_type::TYPE_BOOL:
         out << "readBool()";
         break;
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
         out << "readByte()";
         break;
       case t_base_type::TYPE_I16:
@@ -1649,9 +1649,9 @@ void t_js_generator::generate_deserialize_container(ofstream& out, t_type* ttype
   string rtmp3 = tmp("_rtmp3");
 
   t_field fsize(g_type_i32, size);
-  t_field fktype(g_type_byte, ktype);
-  t_field fvtype(g_type_byte, vtype);
-  t_field fetype(g_type_byte, etype);
+  t_field fktype(g_type_i8, ktype);
+  t_field fvtype(g_type_i8, vtype);
+  t_field fetype(g_type_i8, etype);
 
   out << indent() << "var " << size << " = 0;" << endl;
   out << indent() << "var " << rtmp3 << ";" << endl;
@@ -1794,7 +1794,7 @@ void t_js_generator::generate_serialize_field(ofstream& out, t_field* tfield, st
       case t_base_type::TYPE_BOOL:
         out << "writeBool(" << name << ")";
         break;
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
         out << "writeByte(" << name << ")";
         break;
       case t_base_type::TYPE_I16:
@@ -1950,7 +1950,7 @@ string t_js_generator::declare_field(t_field* tfield, bool init, bool obj) {
         break;
       case t_base_type::TYPE_STRING:
       case t_base_type::TYPE_BOOL:
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
       case t_base_type::TYPE_I16:
       case t_base_type::TYPE_I32:
       case t_base_type::TYPE_I64:
@@ -2042,7 +2042,7 @@ string t_js_generator::type_to_enum(t_type* type) {
       return "Thrift.Type.STRING";
     case t_base_type::TYPE_BOOL:
       return "Thrift.Type.BOOL";
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return "Thrift.Type.BYTE";
     case t_base_type::TYPE_I16:
       return "Thrift.Type.I16";
@@ -2087,7 +2087,7 @@ string t_js_generator::ts_get_type(t_type* type) {
     case t_base_type::TYPE_BOOL:
       ts_type = "boolean";
       break;
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       ts_type = "any";
       break;
     case t_base_type::TYPE_I16:
@@ -2100,7 +2100,12 @@ string t_js_generator::ts_get_type(t_type* type) {
       ts_type = "void";
     }
   } else if (type->is_enum() || type->is_struct() || type->is_xception()) {
-    ts_type = type->get_name();
+    std::string type_name;
+    if (type->get_program()) {
+      type_name = js_namespace(type->get_program());
+    }
+    type_name.append(type->get_name());
+    ts_type = type_name;
   } else if (type->is_list() || type->is_set()) {
     t_type* etype;
 
@@ -2115,8 +2120,13 @@ string t_js_generator::ts_get_type(t_type* type) {
     string ktype = ts_get_type(((t_map*)type)->get_key_type());
     string vtype = ts_get_type(((t_map*)type)->get_val_type());
 
-    if (ktype == "number" || ktype == "string") {
+
+    if (ktype == "number" || ktype == "string" ) {
       ts_type = "{ [k: " + ktype + "]: " + vtype + "; }";
+    } else if ((((t_map*)type)->get_key_type())->is_enum()) {
+      // Not yet supported (enum map): https://github.com/Microsoft/TypeScript/pull/2652
+      //ts_type = "{ [k: " + ktype + "]: " + vtype + "; }";
+      ts_type = "{ [k: number /*" + ktype + "*/]: " + vtype + "; }";
     } else {
       ts_type = "any";
     }
@@ -2142,7 +2152,7 @@ std::string t_js_generator::ts_function_signature(t_function* tfunction, bool in
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
     str += (*f_iter)->get_name() + ts_get_req(*f_iter) + ": " + ts_get_type((*f_iter)->get_type());
 
-    if (f_iter + 1 != fields.end() || include_callback) {
+    if (f_iter + 1 != fields.end() || (include_callback && fields.size() > 0)) {
       str += ", ";
     }
   }

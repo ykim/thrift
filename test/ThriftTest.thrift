@@ -86,7 +86,7 @@ struct Xtruct
 
 struct Xtruct2
 {
-  1: byte   byte_thing,
+  1: i8     byte_thing,  // used to be byte, hence the name
   2: Xtruct struct_thing,
   3: i32    i32_thing
 }
@@ -144,11 +144,19 @@ service ThriftTest
   string       testString(1: string thing),
 
   /**
-   * Prints 'testByte("%d")' with thing as '%d'
-   * @param byte thing - the byte to print
-   * @return byte - returns the byte 'thing'
+   * Prints 'testBool("%s")' where '%s' with thing as 'true' or 'false'
+   * @param bool  thing - the bool data to print
+   * @return bool  - returns the bool 'thing'
    */
-  byte         testByte(1: byte thing),
+  bool         testBool(1: bool thing),
+
+  /**
+   * Prints 'testByte("%d")' with thing as '%d'
+   * The types i8 and byte are synonyms, use of i8 is encouraged, byte still exists for the sake of compatibility.
+   * @param byte thing - the i8/byte to print
+   * @return i8 - returns the i8/byte 'thing'
+   */
+  i8         testByte(1: byte thing),
 
   /**
    * Prints 'testI32("%d")' with thing as '%d'
@@ -285,7 +293,7 @@ service ThriftTest
    * Print 'testMultiException(%s, %s)' with arg0 as '%s' and arg1 as '%s'
    * @param string arg - a string indication what type of exception to throw
    * if arg0 == "Xception" throw Xception with errorCode = 1001 and message = "This is an Xception"
-   * elsen if arg0 == "Xception2" throw Xception2 with errorCode = 2002 and message = "This is an Xception2"
+   * elsen if arg0 == "Xception2" throw Xception2 with errorCode = 2002 and struct_thing.string_thing = "This is an Xception2"
    * else do not throw anything
    * @return Xtruct - an Xtruct with string_thing = arg1
    */

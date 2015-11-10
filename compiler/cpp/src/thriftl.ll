@@ -155,7 +155,11 @@ literal_begin (['\"])
 "include"            { return tok_include;              }
 "void"               { return tok_void;                 }
 "bool"               { return tok_bool;                 }
-"byte"               { return tok_byte;                 }
+"byte"               { 
+  emit_byte_type_warning();
+  return tok_i8;
+}
+"i8"                 { return tok_i8;                   }
 "i16"                { return tok_i16;                  }
 "i32"                { return tok_i32;                  }
 "i64"                { return tok_i64;                  }
@@ -239,6 +243,7 @@ literal_begin (['\"])
 "float"              { thrift_reserved_keyword(yytext); }
 "for"                { thrift_reserved_keyword(yytext); }
 "foreach"            { thrift_reserved_keyword(yytext); }
+"from"               { thrift_reserved_keyword(yytext); }
 "function"           { thrift_reserved_keyword(yytext); }
 "global"             { thrift_reserved_keyword(yytext); }
 "goto"               { thrift_reserved_keyword(yytext); }
@@ -258,6 +263,7 @@ literal_begin (['\"])
 "nil"                { thrift_reserved_keyword(yytext); }
 "not"                { thrift_reserved_keyword(yytext); }
 "or"                 { thrift_reserved_keyword(yytext); }
+"package"            { thrift_reserved_keyword(yytext); }
 "pass"               { thrift_reserved_keyword(yytext); }
 "public"             { thrift_reserved_keyword(yytext); }
 "print"              { thrift_reserved_keyword(yytext); }

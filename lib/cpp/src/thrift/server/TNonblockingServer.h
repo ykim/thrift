@@ -38,6 +38,8 @@
 #include <unistd.h>
 #endif
 #include <event.h>
+#include <event2/event_compat.h>
+#include <event2/event_struct.h>
 
 namespace apache {
 namespace thrift {
@@ -709,6 +711,11 @@ public:
    * Returns the optional user-provided event-base (for single-thread servers).
    */
   event_base* getUserEventBase() const { return userEventBase_; }
+
+  /** Some transports, like THeaderTransport, require passing through
+   * the framing size instead of stripping it.
+   */
+  bool getHeaderTransport();
 
 private:
   /**

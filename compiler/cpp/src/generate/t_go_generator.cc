@@ -247,9 +247,9 @@ public:
 
   std::string go_autogen_comment();
   std::string go_package();
-  std::string go_imports_begin();
+  std::string go_imports_begin(bool ttypes);
   std::string go_imports_end();
-  std::string render_includes();
+  std::string render_includes(bool ttypes);
   std::string render_import_protection();
   std::string render_fastbinary_includes();
   std::string declare_argument(t_field* tfield);
@@ -339,7 +339,7 @@ bool t_go_generator::omit_initialization(t_field* tfield) {
       return value->get_string().empty();
 
     case t_base_type::TYPE_BOOL:
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -397,7 +397,7 @@ bool t_go_generator::is_pointer_field(t_field* tfield, bool in_container_value) 
       return !has_default;
 
     case t_base_type::TYPE_BOOL:
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -424,11 +424,11 @@ bool t_go_generator::is_pointer_field(t_field* tfield, bool in_container_value) 
 std::string t_go_generator::camelcase(const std::string& value) const {
   std::string value2(value);
   std::setlocale(LC_ALL, "C"); // set locale to classic
-  
+
   // Fix common initialism in first word
   fix_common_initialism(value2, 0);
 
-  // as long as we are changing things, let's change _ followed by lowercase to 
+  // as long as we are changing things, let's change _ followed by lowercase to
   // capital and fix common initialisms
   for (std::string::size_type i = 1; i < value2.size() - 1; ++i) {
     if (value2[i] == '_') {
@@ -446,7 +446,11 @@ std::string t_go_generator::camelcase(const std::string& value) const {
 // and if so replaces it with the upper case version of the word.
 void t_go_generator::fix_common_initialism(std::string& value, int i) const {
   if (!ignore_initialisms_) {
-    std::string word = value.substr(i, value.find('_', i));
+    size_t wordLen = value.find('_', i);
+    if (wordLen != std::string::npos) {
+      wordLen -= i;
+    }
+    std::string word = value.substr(i, wordLen);
     std::transform(word.begin(), word.end(), word.begin(), ::toupper);
     if (commonInitialisms.find(word) != commonInitialisms.end()) {
       value.replace(i, word.length(), word);
@@ -752,18 +756,19 @@ void t_go_generator::init_generator() {
   }
 
   // Print header
-  f_types_ << go_autogen_comment() << go_package() << render_includes()
+  f_types_ << go_autogen_comment() << go_package() << render_includes(true)
            << render_import_protection();
 
-  f_consts_ << go_autogen_comment() << go_package() << render_includes();
+  f_consts_ << go_autogen_comment() << go_package() << render_includes(false);
 
   f_const_values_ << endl << "func init() {" << endl;
 }
 
 /**
- * Renders all the imports necessary for including another Thrift program
+ * Renders all the imports necessary for including another Thrift program.
+ * If ttypes include the additional imports for ttypes.go.
  */
-string t_go_generator::render_includes() {
+string t_go_generator::render_includes(bool ttypes) {
   const vector<t_program*>& includes = program_->get_includes();
   string result = "";
   string unused_prot = "";
@@ -787,7 +792,7 @@ string t_go_generator::render_includes() {
     result += "\n";
   }
 
-  return go_imports_begin() + result + go_imports_end() + unused_prot;
+  return go_imports_begin(ttypes) + result + go_imports_end() + unused_prot;
 }
 
 string t_go_generator::render_import_protection() {
@@ -819,12 +824,21 @@ string t_go_generator::go_package() {
 }
 
 /**
- * Render the beginning of the import statement
+ * Render the beginning of the import statement.
+ * If ttypes include the additional imports for ttypes.go.
  */
-string t_go_generator::go_imports_begin() {
+string t_go_generator::go_imports_begin(bool ttypes) {
+  string extra;
+  // If writing ttypes.go, and there are enums, need extra imports.
+  if (ttypes && get_program()->get_enums().size() > 0) {
+    extra =
+      "\t\"database/sql/driver\"\n"
+      "\t\"errors\"\n";
+  }
   return string(
       "import (\n"
       "\t\"bytes\"\n"
+      + extra +
       "\t\"fmt\"\n"
       "\t\"" + gen_thrift_import_ + "\"\n");
 }
@@ -951,6 +965,21 @@ void t_go_generator::generate_enum(t_enum* tenum) {
   f_types_ << "if (err != nil) {" << endl << "return err" << endl << "}" << endl;
   f_types_ << "*p = q" << endl;
   f_types_ << "return nil" << endl;
+  f_types_ << "}" << endl << endl;
+
+  // Generate Scan for sql.Scanner interface
+  f_types_ << "func (p *" << tenum_name << ") Scan(value interface{}) error {" <<endl;
+  f_types_ << "v, ok := value.(int64)" <<endl;
+  f_types_ << "if !ok {" <<endl;
+  f_types_ << "return errors.New(\"Scan value is not int64\")" <<endl;
+  f_types_ << "}" <<endl;
+  f_types_ << "*p = " << tenum_name << "(v)" << endl;
+  f_types_ << "return nil" << endl;
+  f_types_ << "}" << endl << endl;
+
+  // Generate Value for driver.Valuer interface
+  f_types_ << "func (p " << tenum_name << ") Value() (driver.Value, error) {" <<endl;
+  f_types_ << "return int64(p), nil" << endl;
   f_types_ << "}" << endl;
 }
 
@@ -998,7 +1027,7 @@ string t_go_generator::render_const_value(t_type* type, t_const_value* value, co
       out << (value->get_integer() > 0 ? "true" : "false");
       break;
 
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -1040,21 +1069,13 @@ string t_go_generator::render_const_value(t_type* type, t_const_value* value, co
         throw "type error: " + type->get_name() + " has no field " + v_iter->first->get_string();
       }
 
-      if (field_type->is_base_type() || field_type->is_enum()) {
-        out << endl << indent() << publicize(v_iter->first->get_string()) << ": "
-            << render_const_value(field_type, v_iter->second, name) << ",";
-      } else {
-        string k(tmp("k"));
-        string v(tmp("v"));
-        out << endl << indent() << v << " := " << render_const_value(field_type, v_iter->second, v)
-            << endl << indent() << name << "." << publicize(v_iter->first->get_string()) << " = "
-            << v;
-      }
+      out << endl << indent() << publicize(v_iter->first->get_string()) << ": "
+          << render_const_value(field_type, v_iter->second, name) << "," << endl;
     }
 
+    indent_down();
     out << "}";
 
-    indent_down();
   } else if (type->is_map()) {
     t_type* ktype = ((t_map*)type)->get_key_type();
     t_type* vtype = ((t_map*)type)->get_val_type();
@@ -1223,19 +1244,20 @@ void t_go_generator::generate_go_struct_definition(ofstream& out,
 
       t_type* fieldType = (*m_iter)->get_type();
       string goType = type_to_go_type_with_opt(fieldType, is_pointer_field(*m_iter));
-      string gotag;
+      string gotag = "db:\"" + escape_string((*m_iter)->get_name())  + "\" ";
       if ((*m_iter)->get_req() == t_field::T_OPTIONAL) {
-        gotag = "json:\"" + escape_string((*m_iter)->get_name()) + ",omitempty\"";
+        gotag += "json:\"" + escape_string((*m_iter)->get_name()) + ",omitempty\"";
       } else {
-        gotag = "json:\"" + escape_string((*m_iter)->get_name()) + "\"";
+        gotag += "json:\"" + escape_string((*m_iter)->get_name()) + "\"";
       }
+
+      // Check for user override of db and json tags using "go.tag"
       std::map<string, string>::iterator it = (*m_iter)->annotations_.find("go.tag");
       if (it != (*m_iter)->annotations_.end()) {
         gotag = it->second;
       }
       indent(out) << publicize((*m_iter)->get_name()) << " " << goType << " `thrift:\""
                   << escape_string((*m_iter)->get_name()) << "," << sorted_keys_pos;
-
       if ((*m_iter)->get_req() == t_field::T_REQUIRED) {
         out << ",required";
       }
@@ -1657,7 +1679,7 @@ void t_go_generator::generate_service(t_service* tservice) {
     f_service_name = package_dir_ + "/" + filename + ".go";
   }
   f_service_.open(f_service_name.c_str());
-  f_service_ << go_autogen_comment() << go_package() << render_includes();
+  f_service_ << go_autogen_comment() << go_package() << render_includes(false);
 
   generate_service_interface(tservice);
   generate_service_client(tservice);
@@ -2272,7 +2294,7 @@ void t_go_generator::generate_service_remote(t_service* tservice) {
                    << endl;
           break;
 
-        case t_base_type::TYPE_BYTE:
+        case t_base_type::TYPE_I8:
           f_remote << indent() << "tmp" << i << ", " << err << " := (strconv.Atoi(flag.Arg("
                    << flagArg << ")))" << endl;
           f_remote << indent() << "if " << err << " != nil {" << endl;
@@ -2418,7 +2440,7 @@ void t_go_generator::generate_service_remote(t_service* tservice) {
 
         case t_base_type::TYPE_STRING:
         case t_base_type::TYPE_BOOL:
-        case t_base_type::TYPE_BYTE:
+        case t_base_type::TYPE_I8:
         case t_base_type::TYPE_I16:
         case t_base_type::TYPE_I32:
         case t_base_type::TYPE_I64:
@@ -2494,7 +2516,7 @@ void t_go_generator::generate_service_server(t_service* tservice) {
     }
   }
 
-  string pServiceName(privatize(serviceName));
+  string pServiceName(privatize(tservice->get_name()));
   // Generate the header portion
   string self(tmp("self"));
 
@@ -2797,7 +2819,7 @@ void t_go_generator::generate_deserialize_field(ofstream& out,
         out << "ReadBool()";
         break;
 
-      case t_base_type::TYPE_BYTE:
+      case t_base_type::TYPE_I8:
         out << "ReadByte()";
         break;
 
@@ -2833,7 +2855,7 @@ void t_go_generator::generate_deserialize_field(ofstream& out,
 
     if (type->is_enum() || (orig_type->is_typedef() && !use_true_type)) {
       wrap = publicize(type_name(orig_type));
-    } else if (((t_base_type*)type)->get_base() == t_base_type::TYPE_BYTE) {
+    } else if (((t_base_type*)type)->get_base() == t_base_type::TYPE_I8) {
       wrap = "int8";
     }
 
@@ -3048,8 +3070,8 @@ void t_go_generator::generate_serialize_field(ofstream& out,
         out << "WriteBool(bool(" << name << "))";
         break;
 
-      case t_base_type::TYPE_BYTE:
-        out << "WriteByte(byte(" << name << "))";
+      case t_base_type::TYPE_I8:
+        out << "WriteByte(int8(" << name << "))";
         break;
 
       case t_base_type::TYPE_I16:
@@ -3416,7 +3438,7 @@ string t_go_generator::type_to_enum(t_type* type) {
     case t_base_type::TYPE_BOOL:
       return "thrift.BOOL";
 
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return "thrift.BYTE";
 
     case t_base_type::TYPE_I16:
@@ -3500,7 +3522,7 @@ string t_go_generator::type_to_go_type_with_opt(t_type* type,
     case t_base_type::TYPE_BOOL:
       return maybe_pointer + "bool";
 
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return maybe_pointer + "int8";
 
     case t_base_type::TYPE_I16:

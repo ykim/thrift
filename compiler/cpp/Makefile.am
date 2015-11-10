@@ -23,7 +23,7 @@
 
 AM_YFLAGS = -d
 LIBS =
-BUILT_SOURCES = thrifty.cc
+BUILT_SOURCES = src/thrifty.cc
 
 bin_PROGRAMS = thrift
 
@@ -40,6 +40,8 @@ thrift_SOURCES = src/main.cc \
                  src/platform.h \
                  src/logging.h \
                  src/md5.h \
+                 src/audit/t_audit.cpp \
+                 src/audit/t_audit.h \
                  src/parse/t_doc.h \
                  src/parse/t_type.h \
                  src/parse/t_base_type.h \
@@ -72,6 +74,7 @@ thrift_SOURCES += src/generate/t_c_glib_generator.cc \
                   src/generate/t_java_generator.cc \
                   src/generate/t_json_generator.cc \
                   src/generate/t_as3_generator.cc \
+                  src/generate/t_dart_generator.cc \
                   src/generate/t_haxe_generator.cc \
                   src/generate/t_csharp_generator.cc \
                   src/generate/t_py_generator.cc \
@@ -80,6 +83,7 @@ thrift_SOURCES += src/generate/t_c_glib_generator.cc \
                   src/generate/t_php_generator.cc \
                   src/generate/t_erl_generator.cc \
                   src/generate/t_cocoa_generator.cc \
+                  src/generate/t_swift_generator.cc \
                   src/generate/t_st_generator.cc \
                   src/generate/t_ocaml_generator.cc \
                   src/generate/t_hs_generator.cc \
@@ -109,6 +113,7 @@ WINDOWS_DIST = \
              compiler.vcxproj.filters
 
 EXTRA_DIST = \
+             coding_standards.md \
              README.md \
              CMakeLists.txt \
              $(WINDOWS_DIST)

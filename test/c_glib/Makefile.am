@@ -29,7 +29,7 @@ nodist_libtestcglib_la_SOURCES = \
 
 libtestcglib_la_LIBADD = $(top_builddir)/lib/c_glib/libthrift_c_glib.la
 
-precross: test_client test_server
+precross: libtestcglib.la test_client test_server
 
 check_PROGRAMS = \
 	test_client \
@@ -65,7 +65,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/lib/c_glib/src -Igen-c_glib
 AM_LDFLAGS = $(GLIB_LIBS) $(GOBJECT_LIBS) @GCOV_LDFLAGS@
 
 clean-local:
-	$(RM) -r gen-c_glib
+	$(RM) gen-c_glib/*
 
 EXTRA_DIST = \
 	src/test_client.c \

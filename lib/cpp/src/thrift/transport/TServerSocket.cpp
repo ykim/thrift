@@ -75,6 +75,42 @@ void destroyer_of_fine_sockets(THRIFT_SOCKET* ssock) {
   delete ssock;
 }
 
+class TGetAddrInfoWrapper {
+public:
+  TGetAddrInfoWrapper(const char* node, const char* service, const struct addrinfo* hints);
+
+  virtual ~TGetAddrInfoWrapper();
+
+  int init();
+  const struct addrinfo* res();
+
+private:
+  const char* node_;
+  const char* service_;
+  const struct addrinfo* hints_;
+  struct addrinfo* res_;
+};
+
+TGetAddrInfoWrapper::TGetAddrInfoWrapper(const char* node,
+                                         const char* service,
+                                         const struct addrinfo* hints)
+  : node_(node), service_(service), hints_(hints), res_(NULL) {}
+
+TGetAddrInfoWrapper::~TGetAddrInfoWrapper() {
+  if (this->res_ != NULL)
+    freeaddrinfo(this->res_);
+}
+
+int TGetAddrInfoWrapper::init() {
+  if (this->res_ == NULL)
+    return getaddrinfo(this->node_, this->service_, this->hints_, &(this->res_));
+  return 0;
+}
+
+const struct addrinfo* TGetAddrInfoWrapper::res() {
+  return this->res_;
+}
+
 namespace apache {
 namespace thrift {
 namespace transport {
@@ -236,7 +272,8 @@ void TServerSocket::listen() {
     throw TTransportException(TTransportException::BAD_ARGS, "Specified port is invalid");
   }
 
-  struct addrinfo hints, *res, *res0;
+  struct addrinfo hints;
+  const struct addrinfo *res;
   int error;
   char port[sizeof("65535")];
   std::memset(&hints, 0, sizeof(hints));
@@ -246,7 +283,9 @@ void TServerSocket::listen() {
   sprintf(port, "%d", port_);
 
   // If address is not specified use wildcard address (NULL)
-  error = getaddrinfo(address_.empty() ? NULL : &address_[0], port, &hints, &res0);
+  TGetAddrInfoWrapper info(address_.empty() ? NULL : &address_[0], port, &hints);
+
+  error = info.init();
   if (error) {
     GlobalOutput.printf("getaddrinfo %d: %s", error, THRIFT_GAI_STRERROR(error));
     close();
@@ -256,7 +295,7 @@ void TServerSocket::listen() {
 
   // Pick the ipv6 address first since ipv4 addresses can be mapped
   // into ipv6 space.
-  for (res = res0; res; res = res->ai_next) {
+  for (res = info.res(); res; res = res->ai_next) {
     if (res->ai_family == AF_INET6 || res->ai_next == NULL)
       break;
   }
@@ -420,7 +459,19 @@ void TServerSocket::listen() {
     struct sockaddr_un address;
     address.sun_family = AF_UNIX;
     memcpy(address.sun_path, path_.c_str(), len);
+
     socklen_t structlen = static_cast<socklen_t>(sizeof(address));
+
+    if (!address.sun_path[0]) { // abstract namespace socket
+#ifdef __linux__
+      // sun_path is not null-terminated in this case and structlen determines its length
+      structlen -= sizeof(address.sun_path) - len;
+#else
+      GlobalOutput.perror("TSocket::open() Abstract Namespace Domain sockets only supported on linux: ", -99);
+      throw TTransportException(TTransportException::NOT_OPEN,
+                                " Abstract Namespace Domain socket path not supported");
+#endif
+    }
 
     do {
       if (0 == ::bind(serverSocket_, (struct sockaddr*)&address, structlen)) {
@@ -440,9 +491,6 @@ void TServerSocket::listen() {
       }
       // use short circuit evaluation here to only sleep if we need to
     } while ((retries++ < retryLimit_) && (THRIFT_SLEEP_SEC(retryDelay_) == 0));
-
-    // free addrinfo
-    freeaddrinfo(res0);
 
     // retrieve bind info
     if (port_ == 0 && retries <= retryLimit_) {

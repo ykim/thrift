@@ -19,13 +19,25 @@
 
 THRIFT = ../../compiler/cpp/thrift
 THRIFT_FILES = $(wildcard test/*.thrift) \
+		  ../../test/NameConflictTest.thrift \
 		  ../../test/ThriftTest.thrift
 
-.generated: $(THRIFT_FILES)
+if ERLANG_OTP16
+ERL_FLAG = erl:otp16
+ERL_FLAG_LEGACY = erl:otp16,legacynames
+# otp16 + maps does not make sense. We need to generate it anyway to avoid include error.
+ERL_FLAG_MAPS = erl:otp16
+else
+ERL_FLAG = erl
+ERL_FLAG_LEGACY = erl:legacynames
+ERL_FLAG_MAPS = erl:maps
+endif
+.generated: $(THRIFT) $(THRIFT_FILES)
 	for f in $(THRIFT_FILES) ; do \
-	  $(THRIFT) --gen erl -o test $$f ; \
-	done ; \
-	$(THRIFT) --gen erl:maps -o test test/Thrift3214.thrift ; \
+		$(THRIFT) --gen $(ERL_FLAG) -o test $$f ; \
+	done
+	$(THRIFT) --gen $(ERL_FLAG_LEGACY) -o test test/flags/LegacyNames.thrift
+	$(THRIFT) --gen $(ERL_FLAG_MAPS) -o test test/flags/Thrift3214.thrift
 	touch .generated
 
 all: .generated
@@ -33,7 +45,9 @@ all: .generated
 	./rebar compile
 
 check: .generated
-	./rebar skip_deps=true eunit
+	./rebar -C rebar.test.config get-deps
+	./rebar -C rebar.test.config compile
+	./rebar -C rebar.test.config skip_deps=true eunit
 
 install: all
 	mkdir -p $(DESTDIR)$(ERLANG_INSTALL_LIB_DIR_thrift) ; \
@@ -58,6 +72,7 @@ maintainer-clean-local:
 EXTRA_DIST = \
 	include \
 	src \
+	coding_standards.md \
 	rebar \
 	rebar.config \
 	test \

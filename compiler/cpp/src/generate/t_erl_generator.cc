@@ -56,6 +56,10 @@ public:
 
     legacy_names_ = (parsed_options.find("legacynames") != parsed_options.end());
     maps_ = (parsed_options.find("maps") != parsed_options.end());
+    otp16_ = (parsed_options.find("otp16") != parsed_options.end());
+    if (maps_ && otp16_) {
+      throw "argument error: Cannot specify both maps and otp16; maps are not available for Erlang/OTP R16 or older";
+    }
   }
 
   /**
@@ -155,6 +159,9 @@ private:
 
   /* if true use maps instead of dicts in generated code */
   bool maps_;
+
+  /* if true use non-namespaced dict and set instead of dict:dict and sets:set */
+  bool otp16_;
 
   /**
    * add function to export list
@@ -380,7 +387,7 @@ string t_erl_generator::render_const_value(t_type* type, t_const_value* value) {
     case t_base_type::TYPE_BOOL:
       out << (value->get_integer() > 0 ? "true" : "false");
       break;
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -510,7 +517,7 @@ string t_erl_generator::render_member_type(t_field* field) {
       return "string() | binary()";
     case t_base_type::TYPE_BOOL:
       return "boolean()";
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
     case t_base_type::TYPE_I16:
     case t_base_type::TYPE_I32:
     case t_base_type::TYPE_I64:
@@ -527,11 +534,17 @@ string t_erl_generator::render_member_type(t_field* field) {
   } else if (type->is_map()) {
     if (maps_) {
       return "#{}";
+    } else if (otp16_) {
+      return "dict()";
     } else {
       return "dict:dict()";
     }
   } else if (type->is_set()) {
-    return "sets:set()";
+    if (otp16_) {
+      return "set()";
+    } else {
+      return "sets:set()";
+    }
   } else if (type->is_list()) {
     return "list()";
   } else {
@@ -905,8 +918,8 @@ string t_erl_generator::type_to_enum(t_type* type) {
       return "?tType_STRING";
     case t_base_type::TYPE_BOOL:
       return "?tType_BOOL";
-    case t_base_type::TYPE_BYTE:
-      return "?tType_BYTE";
+    case t_base_type::TYPE_I8:
+      return "?tType_I8";
     case t_base_type::TYPE_I16:
       return "?tType_I16";
     case t_base_type::TYPE_I32:
@@ -948,7 +961,7 @@ std::string t_erl_generator::render_type_term(t_type* type,
       return "string";
     case t_base_type::TYPE_BOOL:
       return "bool";
-    case t_base_type::TYPE_BYTE:
+    case t_base_type::TYPE_I8:
       return "byte";
     case t_base_type::TYPE_I16:
       return "i16";
@@ -1027,4 +1040,5 @@ THRIFT_REGISTER_GENERATOR(
     erl,
     "Erlang",
     "    legacynames: Output files retain naming conventions of Thrift 0.9.1 and earlier.\n"
-    "    maps:        Generate maps instead of dicts.\n")
+    "    maps:        Generate maps instead of dicts.\n"
+    "    otp16:       Generate non-namespaced dict and set instead of dict:dict and sets:set.\n")
